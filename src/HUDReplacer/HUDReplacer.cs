@@ -157,15 +157,15 @@ public partial class HUDReplacer : MonoBehaviour
 
     private void ForceGlobalSkin()
     {
-        if (HighLogic.UISkin != null)
+        if (HighLogic.UISkin != null && HighLogic.UISkin.guiSkin != null)
         {
-            ApplySkin(HighLogic.UISkin);
+            ApplySkin(HighLogic.UISkin.guiSkin);
         }
 
         // UISkinManager is used for modern UI skins in KSP 1.12
-        if (UISkinManager.defaultSkin != null)
+        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin.guiSkin != null)
         {
-            ApplySkin(UISkinManager.defaultSkin);
+            ApplySkin(UISkinManager.defaultSkin.guiSkin);
         }
     }
 
