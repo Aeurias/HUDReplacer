@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Cursors;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -178,15 +179,71 @@ public partial class HUDReplacer : MonoBehaviour
 
     private void ForceGlobalSkin()
     {
-        if (HighLogic.UISkin != null && HighLogic.UISkin.guiSkin != null)
+        // Legacy IMGUI Support
+        if (HighLogic.Skin != null)
         {
-            ApplySkin(HighLogic.UISkin.guiSkin);
+            ApplySkin(HighLogic.Skin);
         }
 
-        // UISkinManager is used for modern UI skins in KSP 1.12
-        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin.guiSkin != null)
+        // Modern uGUI Support (KSP 1.12)
+        if (HighLogic.UISkin != null)
         {
-            ApplySkin(UISkinManager.defaultSkin.guiSkin);
+            ApplyUISkinDef(HighLogic.UISkin);
+        }
+
+        if (UISkinManager.defaultSkin != null)
+        {
+            ApplyUISkinDef(UISkinManager.defaultSkin);
+        }
+    }
+
+    private void ApplyUISkinDef(object uiSkinDef)
+    {
+        if (uiSkinDef == null)
+            return;
+
+        List<Texture2D> textures = new List<Texture2D>();
+        // Use reflection to find all UIStyle fields in UISkinDef
+        FieldInfo[] fields = uiSkinDef.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (FieldInfo field in fields)
+        {
+            // We're looking for UIStyle fields
+            if (field.FieldType.Name == "UIStyle")
+            {
+                object uiStyle = field.GetValue(uiSkinDef);
+                AddTexturesFromUIStyle(uiStyle, textures);
+            }
+        }
+
+        if (textures.Count > 0)
+        {
+            ReplaceTextures(textures.Distinct().ToArray());
+        }
+    }
+
+    private void AddTexturesFromUIStyle(object uiStyle, List<Texture2D> textures)
+    {
+        if (uiStyle == null)
+            return;
+
+        // UIStyle contains UIStyleState fields like normal, highlight, active, disabled
+        FieldInfo[] fields = uiStyle.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (FieldInfo field in fields)
+        {
+            if (field.FieldType.Name == "UIStyleState")
+            {
+                object state = field.GetValue(uiStyle);
+                if (state == null) continue;
+
+                // UIStyleState contains a background (Texture2D) and backgroundSprite (Sprite)
+                FieldInfo texField = state.GetType().GetField("background", BindingFlags.Public | BindingFlags.Instance);
+                if (texField != null && texField.GetValue(state) is Texture2D tex)
+                    textures.Add(tex);
+
+                FieldInfo spriteField = state.GetType().GetField("backgroundSprite", BindingFlags.Public | BindingFlags.Instance);
+                if (spriteField != null && spriteField.GetValue(state) is Sprite sprite && sprite.texture != null)
+                    textures.Add(sprite.texture);
+            }
         }
     }
 
