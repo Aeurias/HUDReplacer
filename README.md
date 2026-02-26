@@ -2,6 +2,14 @@
 
 This is a framework for Kerbal Space Program that allows you to replace HUD/UI textures at runtime.
 
+## Installation & Load Order
+To ensure HUDReplacer functions correctly and is able to skin all UI elements (including DLC and late-loading mod windows), the following folder structure in `GameData` is strictly required:
+
+* `GameData/zz_HUDReplacer/` - The core engine.
+* `GameData/zzz_ZTheme/` - The asset pack (e.g., ZTheme).
+
+Naming the folders with these prefixes ensures that HUDReplacer and its assets are loaded after most other mods, preventing initialization race conditions.
+
 ## Download
 [GitHub][gh-download] | CKAN
 

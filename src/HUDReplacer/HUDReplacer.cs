@@ -11,18 +11,7 @@ using UnityEngine.UI;
 
 namespace HUDReplacer;
 
-[KSPAddon(KSPAddon.Startup.MainMenu, false)]
-public class HUDReplacerMainMenu : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.FlightEditorAndKSC, false)]
-public class HUDReplacerFEKSC : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.TrackingStation, false)]
-public class HUDReplacerTrackingStation : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.Settings, false)]
-public class HUDReplacerSettings : HUDReplacer { }
-
+[KSPAddon(KSPAddon.Startup.Instantly, true)]
 public partial class HUDReplacer : MonoBehaviour
 {
     class ReplacementInfo
@@ -93,7 +82,7 @@ public partial class HUDReplacer : MonoBehaviour
         public byte[] cachedTextureBytes;
     }
 
-    internal static HUDReplacer instance;
+    public static HUDReplacer Instance { get; private set; }
     internal static bool enableDebug = false;
 
     private static Dictionary<string, ReplacementInfo> Images;
@@ -112,20 +101,112 @@ public partial class HUDReplacer : MonoBehaviour
     private static string filePathConfig = "HUDReplacer";
     private static string colorPathConfig = "HUDReplacerRecolor";
     private TextureCursor[] cursors;
+    private HashSet<int> replacedTextureIds = new HashSet<int>();
+    private HashSet<string> seenSpecialCanvases = new HashSet<string>();
 
     public void Awake()
     {
-        instance = this;
-        Debug.Log("HUDReplacer: Running scene change. " + HighLogic.LoadedScene);
+        if (Instance != null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        Debug.Log("HUDReplacer: Initializing persistent instance.");
 
         if (Images is null)
             LoadTextures();
 
-        Debug.Log("HUDReplacer: Replacing textures...");
-        ReplaceTextures();
-        Debug.Log("HUDReplacer: Textures have been replaced!");
+        Debug.Log("HUDReplacer: Initial texture replacement...");
+        RefreshAll();
 
+        StartCoroutine(Watcher());
+    }
+
+    public void RefreshAll()
+    {
+        ReplaceTextures();
         LoadHUDColors();
+    }
+
+    private IEnumerator Watcher()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(2.0f);
+            try
+            {
+                if (
+                    HighLogic.LoadedScene != GameScenes.LOADING
+                    && HighLogic.LoadedScene != GameScenes.LOADINGBUFFER
+                )
+                {
+                    ReplaceLazyLoadedTextures();
+                    CheckSpecialCanvases();
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log("HUDReplacer: Watcher error: " + e.Message);
+            }
+        }
+    }
+
+    private void CheckSpecialCanvases()
+    {
+        // Hardcoded hooks for DLC & Menu Specific Canvases
+        string[] specialNames = { "DifficultyCustomizer", "MissionBuilder", "ExpansionCanvas" };
+        foreach (var name in specialNames)
+        {
+            if (seenSpecialCanvases.Contains(name))
+                continue;
+
+            GameObject go = GameObject.Find(name);
+            if (go != null)
+            {
+                Debug.Log("HUDReplacer: Detected special canvas " + name + ", triggering refresh.");
+                RefreshAll();
+                seenSpecialCanvases.Add(name);
+            }
+        }
+    }
+
+    private void ReplaceLazyLoadedTextures()
+    {
+        Canvas[] canvases = GameObject.FindObjectsOfType<Canvas>();
+        HashSet<Texture2D> texturesToReplace = new HashSet<Texture2D>();
+
+        foreach (Canvas canvas in canvases)
+        {
+            Image[] images = canvas.GetComponentsInChildren<Image>(true);
+            foreach (Image img in images)
+            {
+                if (img.sprite != null && img.sprite.texture != null)
+                {
+                    texturesToReplace.Add(img.sprite.texture);
+                }
+                else if (img.mainTexture is Texture2D tex)
+                {
+                    texturesToReplace.Add(tex);
+                }
+            }
+
+            RawImage[] rawImages = canvas.GetComponentsInChildren<RawImage>(true);
+            foreach (RawImage rawImg in rawImages)
+            {
+                if (rawImg.texture is Texture2D tex)
+                {
+                    texturesToReplace.Add(tex);
+                }
+            }
+        }
+
+        if (texturesToReplace.Count > 0)
+        {
+            ReplaceTextures(texturesToReplace.ToArray());
+        }
     }
 
     public void Update()
@@ -145,6 +226,7 @@ public partial class HUDReplacer : MonoBehaviour
             }
             if (Input.GetKeyUp(KeyCode.Q))
             {
+                replacedTextureIds.Clear();
                 LoadTextures();
                 ReplaceTextures();
                 LoadHUDColors();
@@ -380,6 +462,12 @@ public partial class HUDReplacer : MonoBehaviour
         var basePath = KSPUtil.ApplicationRootPath;
         foreach (Texture2D tex in tex_array)
         {
+            if (tex == null)
+                continue;
+
+            if (replacedTextureIds.Contains(tex.GetInstanceID()))
+                continue;
+
             string name = tex.name;
             if (name.Contains("/"))
                 name = name.Split('/').Last();
@@ -410,20 +498,28 @@ public partial class HUDReplacer : MonoBehaviour
                     cursors = new TextureCursor[3];
 
                 cursors[cidx] = CreateCursor(replacement.path);
+                replacedTextureIds.Add(tex.GetInstanceID());
                 continue;
             }
 
             // NavBall GaugeGee and GaugeThrottle needs special handling as well
             if (name == "GaugeGee")
+            {
                 HarmonyPatches.GaugeGeeFilePath = replacement.path;
+                replacedTextureIds.Add(tex.GetInstanceID());
+            }
             else if (name == "GaugeThrottle")
+            {
                 HarmonyPatches.GaugeThrottleFilePath = replacement.path;
+                replacedTextureIds.Add(tex.GetInstanceID());
+            }
             else
             {
                 if (replacement.cachedTextureBytes is null)
                     replacement.cachedTextureBytes = File.ReadAllBytes(replacement.path);
 
                 tex.LoadImage(replacement.cachedTextureBytes);
+                replacedTextureIds.Add(tex.GetInstanceID());
             }
         }
 

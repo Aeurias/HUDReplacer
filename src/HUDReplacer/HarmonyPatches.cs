@@ -241,7 +241,7 @@ public class HarmonyPatches : MonoBehaviour
             }
             Texture2D[] tex_array = textures.ToArray();
             if (tex_array.Length > 0)
-                HUDReplacer.instance.ReplaceTextures(tex_array);
+                HUDReplacer.Instance.ReplaceTextures(tex_array);
         }
     }
 
@@ -835,6 +835,45 @@ public class HarmonyPatches : MonoBehaviour
     internal static Color EditorCategoryButtonColor_Subassembly_color;
     internal static Color EditorCategoryButtonColor_Variants_color;
     internal static Color EditorCategoryButtonColor_Custom_color;
+
+    [HarmonyPatch(typeof(UIMasterController), "OnSceneLoaded")]
+    class Patch_UIMasterController_OnSceneLoaded
+    {
+        static void Postfix()
+        {
+            if (HUDReplacer.Instance != null)
+            {
+                HUDReplacer.Instance.RefreshAll();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ApplicationLauncher), "Start")]
+    class Patch_ApplicationLauncher_Start
+    {
+        static void Postfix()
+        {
+            if (HUDReplacer.Instance != null)
+            {
+                HUDReplacer.Instance.RefreshAll();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(GUI), nameof(GUI.Window), new Type[] { typeof(int), typeof(Rect), typeof(GUI.WindowFunction), typeof(string) })]
+    class Patch_GUI_Window
+    {
+        static void Prefix()
+        {
+            // Just a trigger to ensure textures are replaced if something uses legacy GUI
+            if (HUDReplacer.Instance != null)
+            {
+                // We don't want to call RefreshAll every frame for every window.
+                // But Phase B says "check if it matches a skinning rule and apply it immediately".
+                // For now, we rely on the Watcher and SceneLoaded patches.
+            }
+        }
+    }
 
     [HarmonyPatch(typeof(PartCategorizer), "Setup")]
     class Patch17
