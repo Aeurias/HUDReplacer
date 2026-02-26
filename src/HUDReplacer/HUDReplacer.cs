@@ -130,7 +130,7 @@ public partial class HUDReplacer : MonoBehaviour
         LoadHUDColors();
     }
 
-    private IEnumerator Watcher()
+    private System.Collections.IEnumerator Watcher()
     {
         while (true)
         {
