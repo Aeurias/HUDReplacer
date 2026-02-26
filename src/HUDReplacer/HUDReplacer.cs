@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Cursors;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -11,18 +13,7 @@ using UnityEngine.UI;
 
 namespace HUDReplacer;
 
-[KSPAddon(KSPAddon.Startup.MainMenu, false)]
-public class HUDReplacerMainMenu : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.FlightEditorAndKSC, false)]
-public class HUDReplacerFEKSC : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.TrackingStation, false)]
-public class HUDReplacerTrackingStation : HUDReplacer { }
-
-[KSPAddon(KSPAddon.Startup.Settings, false)]
-public class HUDReplacerSettings : HUDReplacer { }
-
+[KSPAddon(KSPAddon.Startup.Instantly, true)]
 public partial class HUDReplacer : MonoBehaviour
 {
     class ReplacementInfo
@@ -93,7 +84,7 @@ public partial class HUDReplacer : MonoBehaviour
         public byte[] cachedTextureBytes;
     }
 
-    internal static HUDReplacer instance;
+    public static HUDReplacer Instance { get; private set; }
     internal static bool enableDebug = false;
 
     private static Dictionary<string, ReplacementInfo> Images;
@@ -112,20 +103,267 @@ public partial class HUDReplacer : MonoBehaviour
     private static string filePathConfig = "HUDReplacer";
     private static string colorPathConfig = "HUDReplacerRecolor";
     private TextureCursor[] cursors;
+    private HashSet<int> replacedTextureIds = new HashSet<int>();
 
     public void Awake()
     {
-        instance = this;
-        Debug.Log("HUDReplacer: Running scene change. " + HighLogic.LoadedScene);
+        if (Instance != null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
 
-        if (Images is null)
+        Debug.Log("HUDReplacer: Initializing persistent instance.");
+
+        if (Images == null || Images.Count == 0)
             LoadTextures();
 
-        Debug.Log("HUDReplacer: Replacing textures...");
-        ReplaceTextures();
-        Debug.Log("HUDReplacer: Textures have been replaced!");
+        Debug.Log("HUDReplacer: Initial texture replacement...");
+        RefreshAll();
 
+        GameEvents.onLevelWasLoadedGUIReady.Add(OnLevelGUIReady);
+
+        StartCoroutine(Watcher());
+    }
+
+    public void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            GameEvents.onLevelWasLoadedGUIReady.Remove(OnLevelGUIReady);
+        }
+    }
+
+    private void OnLevelGUIReady(GameScenes scene)
+    {
+        Debug.Log("HUDReplacer: GUI Ready for scene: " + scene);
+        StartCoroutine(DelayedRefresh(3.0f));
+    }
+
+    private IEnumerator DelayedRefresh(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        Debug.Log("HUDReplacer: Performing thorough delayed refresh.");
+        // Reset the tracking set on scene stabilization to ensure textures are re-evaluated.
+        // This handles cases where KSP or mods reset skins after the initial load.
+        replacedTextureIds.Clear();
+        RefreshAll();
+    }
+
+    public void RefreshAll()
+    {
+        if (Images == null || Images.Count == 0)
+            LoadTextures();
+
+        ReplaceTextures();
         LoadHUDColors();
+        ForceGlobalSkin();
+    }
+
+    private IEnumerator Watcher()
+    {
+        int thoroughCount = 0;
+        while (true)
+        {
+            yield return new WaitForSeconds(2.0f);
+            try
+            {
+                if (
+                    HighLogic.LoadedScene != GameScenes.LOADING
+                    && HighLogic.LoadedScene != GameScenes.LOADINGBUFFER
+                )
+                {
+                    ReplaceLazyLoadedTextures();
+                    ForceGlobalSkin();
+
+                    thoroughCount++;
+                    if (thoroughCount >= 5) // Every 10 seconds, do a thorough check for new textures
+                    {
+                        ReplaceTextures();
+                        thoroughCount = 0;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log("HUDReplacer: Watcher error: " + e.Message);
+            }
+        }
+    }
+
+    private void ForceGlobalSkin()
+    {
+        // Legacy IMGUI Support
+        if (HighLogic.Skin != null)
+        {
+            ApplySkin(HighLogic.Skin);
+        }
+
+        // Modern uGUI Support (KSP 1.12)
+        if (HighLogic.UISkin != null)
+        {
+            ApplyUISkinDef(HighLogic.UISkin);
+        }
+
+        if (UISkinManager.defaultSkin != null)
+        {
+            ApplyUISkinDef(UISkinManager.defaultSkin);
+        }
+    }
+
+    private void ApplyUISkinDef(object uiSkinDef)
+    {
+        if (uiSkinDef == null)
+            return;
+
+        List<Texture2D> textures = new List<Texture2D>();
+        // Use reflection to find all UIStyle fields in UISkinDef
+        FieldInfo[] fields = uiSkinDef.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (FieldInfo field in fields)
+        {
+            // We're looking for UIStyle fields
+            if (field.FieldType.Name == "UIStyle")
+            {
+                object uiStyle = field.GetValue(uiSkinDef);
+                AddTexturesFromUIStyle(uiStyle, textures);
+            }
+        }
+
+        if (textures.Count > 0)
+        {
+            ReplaceTextures(textures.Distinct().ToArray());
+        }
+    }
+
+    private void AddTexturesFromUIStyle(object uiStyle, List<Texture2D> textures)
+    {
+        if (uiStyle == null)
+            return;
+
+        // UIStyle contains UIStyleState fields like normal, highlight, active, disabled
+        FieldInfo[] fields = uiStyle.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+        foreach (FieldInfo field in fields)
+        {
+            if (field.FieldType.Name == "UIStyleState")
+            {
+                object state = field.GetValue(uiStyle);
+                if (state == null) continue;
+
+                // UIStyleState contains a background (Texture2D) and backgroundSprite (Sprite)
+                FieldInfo texField = state.GetType().GetField("background", BindingFlags.Public | BindingFlags.Instance);
+                if (texField != null && texField.GetValue(state) is Texture2D tex)
+                    textures.Add(tex);
+
+                FieldInfo spriteField = state.GetType().GetField("backgroundSprite", BindingFlags.Public | BindingFlags.Instance);
+                if (spriteField != null && spriteField.GetValue(state) is Sprite sprite && sprite.texture != null)
+                    textures.Add(sprite.texture);
+            }
+        }
+    }
+
+    private void ApplySkin(GUISkin skin)
+    {
+        if (skin == null)
+            return;
+        List<Texture2D> textures = new List<Texture2D>();
+        AddTexturesFromStyle(skin.box, textures);
+        AddTexturesFromStyle(skin.button, textures);
+        AddTexturesFromStyle(skin.toggle, textures);
+        AddTexturesFromStyle(skin.label, textures);
+        AddTexturesFromStyle(skin.textField, textures);
+        AddTexturesFromStyle(skin.textArea, textures);
+        AddTexturesFromStyle(skin.window, textures);
+        AddTexturesFromStyle(skin.horizontalSlider, textures);
+        AddTexturesFromStyle(skin.horizontalSliderThumb, textures);
+        AddTexturesFromStyle(skin.verticalSlider, textures);
+        AddTexturesFromStyle(skin.verticalSliderThumb, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbar, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarThumb, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarLeftButton, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarRightButton, textures);
+        AddTexturesFromStyle(skin.verticalScrollbar, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarThumb, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarUpButton, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarDownButton, textures);
+        AddTexturesFromStyle(skin.scrollView, textures);
+
+        foreach (GUIStyle style in skin.customStyles)
+        {
+            AddTexturesFromStyle(style, textures);
+        }
+
+        if (textures.Count > 0)
+        {
+            ReplaceTextures(textures.Distinct().ToArray());
+        }
+    }
+
+    private void AddTexturesFromStyle(GUIStyle style, List<Texture2D> textures)
+    {
+        if (style == null)
+            return;
+        if (style.normal != null && style.normal.background != null)
+            textures.Add(style.normal.background);
+        if (style.hover != null && style.hover.background != null)
+            textures.Add(style.hover.background);
+        if (style.active != null && style.active.background != null)
+            textures.Add(style.active.background);
+        if (style.focused != null && style.focused.background != null)
+            textures.Add(style.focused.background);
+        if (style.onNormal != null && style.onNormal.background != null)
+            textures.Add(style.onNormal.background);
+        if (style.onHover != null && style.onHover.background != null)
+            textures.Add(style.onHover.background);
+        if (style.onActive != null && style.onActive.background != null)
+            textures.Add(style.onActive.background);
+        if (style.onFocused != null && style.onFocused.background != null)
+            textures.Add(style.onFocused.background);
+    }
+
+    private void ReplaceLazyLoadedTextures()
+    {
+        Canvas[] canvases = GameObject.FindObjectsOfType<Canvas>();
+        HashSet<Texture2D> texturesToReplace = new HashSet<Texture2D>();
+
+        foreach (Canvas canvas in canvases)
+        {
+            if (canvas == null) continue;
+
+            Image[] images = canvas.GetComponentsInChildren<Image>(true);
+            foreach (Image img in images)
+            {
+                if (img == null) continue;
+
+                Texture2D tex = null;
+                if (img.sprite != null && img.sprite.texture != null)
+                    tex = img.sprite.texture;
+                else if (img.mainTexture is Texture2D mTex)
+                    tex = mTex;
+
+                if (tex != null && !replacedTextureIds.Contains(tex.GetInstanceID()))
+                {
+                    texturesToReplace.Add(tex);
+                }
+            }
+
+            RawImage[] rawImages = canvas.GetComponentsInChildren<RawImage>(true);
+            foreach (RawImage rawImg in rawImages)
+            {
+                if (rawImg == null) continue;
+
+                if (rawImg.texture is Texture2D tex && !replacedTextureIds.Contains(tex.GetInstanceID()))
+                {
+                    texturesToReplace.Add(tex);
+                }
+            }
+        }
+
+        if (texturesToReplace.Count > 0)
+        {
+            ReplaceTextures(texturesToReplace.ToArray());
+        }
     }
 
     public void Update()
@@ -145,6 +383,7 @@ public partial class HUDReplacer : MonoBehaviour
             }
             if (Input.GetKeyUp(KeyCode.Q))
             {
+                replacedTextureIds.Clear();
                 LoadTextures();
                 ReplaceTextures();
                 LoadHUDColors();
@@ -369,7 +608,7 @@ public partial class HUDReplacer : MonoBehaviour
 
     internal void ReplaceTextures(Texture2D[] tex_array)
     {
-        if (Images.Count == 0 && SceneImages.Count == 0)
+        if ((Images == null || Images.Count == 0) && (SceneImages == null || SceneImages.Count == 0))
             return;
 
         // Get the overloads specific to the current scene but if there are
@@ -380,6 +619,17 @@ public partial class HUDReplacer : MonoBehaviour
         var basePath = KSPUtil.ApplicationRootPath;
         foreach (Texture2D tex in tex_array)
         {
+            if (tex == null)
+                continue;
+
+            int id = tex.GetInstanceID();
+            if (replacedTextureIds.Contains(id))
+                continue;
+
+            // Mark as evaluated to avoid stuttering on subsequent scans.
+            // Even if no replacement is found, we don't want to re-check this same texture instance every 2 seconds.
+            replacedTextureIds.Add(id);
+
             string name = tex.name;
             if (name.Contains("/"))
                 name = name.Split('/').Last();
@@ -415,9 +665,13 @@ public partial class HUDReplacer : MonoBehaviour
 
             // NavBall GaugeGee and GaugeThrottle needs special handling as well
             if (name == "GaugeGee")
+            {
                 HarmonyPatches.GaugeGeeFilePath = replacement.path;
+            }
             else if (name == "GaugeThrottle")
+            {
                 HarmonyPatches.GaugeThrottleFilePath = replacement.path;
+            }
             else
             {
                 if (replacement.cachedTextureBytes is null)
