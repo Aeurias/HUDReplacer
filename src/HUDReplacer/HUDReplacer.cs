@@ -102,7 +102,6 @@ public partial class HUDReplacer : MonoBehaviour
     private static string colorPathConfig = "HUDReplacerRecolor";
     private TextureCursor[] cursors;
     private HashSet<int> replacedTextureIds = new HashSet<int>();
-    private HashSet<string> seenSpecialCanvases = new HashSet<string>();
 
     public void Awake()
     {
@@ -144,31 +143,11 @@ public partial class HUDReplacer : MonoBehaviour
                 )
                 {
                     ReplaceLazyLoadedTextures();
-                    CheckSpecialCanvases();
                 }
             }
             catch (Exception e)
             {
                 Debug.Log("HUDReplacer: Watcher error: " + e.Message);
-            }
-        }
-    }
-
-    private void CheckSpecialCanvases()
-    {
-        // Hardcoded hooks for DLC & Menu Specific Canvases
-        string[] specialNames = { "DifficultyCustomizer", "MissionBuilder", "ExpansionCanvas" };
-        foreach (var name in specialNames)
-        {
-            if (seenSpecialCanvases.Contains(name))
-                continue;
-
-            GameObject go = GameObject.Find(name);
-            if (go != null)
-            {
-                Debug.Log("HUDReplacer: Detected special canvas " + name + ", triggering refresh.");
-                RefreshAll();
-                seenSpecialCanvases.Add(name);
             }
         }
     }
