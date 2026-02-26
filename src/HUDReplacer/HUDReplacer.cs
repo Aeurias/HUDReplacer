@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -128,9 +129,10 @@ public partial class HUDReplacer : MonoBehaviour
     {
         ReplaceTextures();
         LoadHUDColors();
+        ForceGlobalSkin();
     }
 
-    private System.Collections.IEnumerator Watcher()
+    private IEnumerator Watcher()
     {
         while (true)
         {
@@ -143,6 +145,7 @@ public partial class HUDReplacer : MonoBehaviour
                 )
                 {
                     ReplaceLazyLoadedTextures();
+                    ForceGlobalSkin();
                 }
             }
             catch (Exception e)
@@ -150,6 +153,79 @@ public partial class HUDReplacer : MonoBehaviour
                 Debug.Log("HUDReplacer: Watcher error: " + e.Message);
             }
         }
+    }
+
+    private void ForceGlobalSkin()
+    {
+        if (HighLogic.UISkin != null)
+        {
+            ApplySkin(HighLogic.UISkin);
+        }
+
+        // UISkinManager is used for modern UI skins in KSP 1.12
+        if (UISkinManager.defaultSkin != null)
+        {
+            ApplySkin(UISkinManager.defaultSkin);
+        }
+    }
+
+    private void ApplySkin(GUISkin skin)
+    {
+        if (skin == null)
+            return;
+        List<Texture2D> textures = new List<Texture2D>();
+        AddTexturesFromStyle(skin.box, textures);
+        AddTexturesFromStyle(skin.button, textures);
+        AddTexturesFromStyle(skin.toggle, textures);
+        AddTexturesFromStyle(skin.label, textures);
+        AddTexturesFromStyle(skin.textField, textures);
+        AddTexturesFromStyle(skin.textArea, textures);
+        AddTexturesFromStyle(skin.window, textures);
+        AddTexturesFromStyle(skin.horizontalSlider, textures);
+        AddTexturesFromStyle(skin.horizontalSliderThumb, textures);
+        AddTexturesFromStyle(skin.verticalSlider, textures);
+        AddTexturesFromStyle(skin.verticalSliderThumb, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbar, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarThumb, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarLeftButton, textures);
+        AddTexturesFromStyle(skin.horizontalScrollbarRightButton, textures);
+        AddTexturesFromStyle(skin.verticalScrollbar, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarThumb, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarUpButton, textures);
+        AddTexturesFromStyle(skin.verticalScrollbarDownButton, textures);
+        AddTexturesFromStyle(skin.scrollView, textures);
+
+        foreach (GUIStyle style in skin.customStyles)
+        {
+            AddTexturesFromStyle(style, textures);
+        }
+
+        if (textures.Count > 0)
+        {
+            ReplaceTextures(textures.Distinct().ToArray());
+        }
+    }
+
+    private void AddTexturesFromStyle(GUIStyle style, List<Texture2D> textures)
+    {
+        if (style == null)
+            return;
+        if (style.normal != null && style.normal.background != null)
+            textures.Add(style.normal.background);
+        if (style.hover != null && style.hover.background != null)
+            textures.Add(style.hover.background);
+        if (style.active != null && style.active.background != null)
+            textures.Add(style.active.background);
+        if (style.focused != null && style.focused.background != null)
+            textures.Add(style.focused.background);
+        if (style.onNormal != null && style.onNormal.background != null)
+            textures.Add(style.onNormal.background);
+        if (style.onHover != null && style.onHover.background != null)
+            textures.Add(style.onHover.background);
+        if (style.onActive != null && style.onActive.background != null)
+            textures.Add(style.onActive.background);
+        if (style.onFocused != null && style.onFocused.background != null)
+            textures.Add(style.onFocused.background);
     }
 
     private void ReplaceLazyLoadedTextures()

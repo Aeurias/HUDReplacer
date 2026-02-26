@@ -836,8 +836,8 @@ public class HarmonyPatches : MonoBehaviour
     internal static Color EditorCategoryButtonColor_Variants_color;
     internal static Color EditorCategoryButtonColor_Custom_color;
 
-    [HarmonyPatch(typeof(UIMasterController), "OnSceneLoaded")]
-    class Patch_UIMasterController_OnSceneLoaded
+    [HarmonyPatch(typeof(UIMasterController), "Awake")]
+    class Patch_UIMasterController_Awake
     {
         static void Postfix()
         {
