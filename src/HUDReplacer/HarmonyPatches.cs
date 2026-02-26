@@ -19,17 +19,9 @@ public class HarmonyPatches : MonoBehaviour
 {
     public void Awake()
     {
-        try
-        {
-            var harmony = new Harmony("UltraJohn.Mods.HUDReplacer");
-            harmony.PatchAll(Assembly.GetExecutingAssembly());
-            Debug.Log("HUDReplacer: Harmony patches applied successfully.");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"HUDReplacer: CRITICAL FAILURE during Harmony patching: {e.Message}");
-            Debug.LogException(e);
-        }
+        // NOTE: A Harmony patcher should be placed in a run once Startup addon. The patch is kept between scene changes.
+        var harmony = new Harmony("UltraJohn.Mods.HUDReplacer");
+        harmony.PatchAll(Assembly.GetExecutingAssembly());
     }
 
     // Tumbler colors
@@ -856,8 +848,8 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
-    [HarmonyPatch(typeof(KSP.UI.Screens.ApplicationLauncher), "Awake")]
-    class Patch_ApplicationLauncher_Awake
+    [HarmonyPatch(typeof(ApplicationLauncher), "Start")]
+    class Patch_ApplicationLauncher_Start
     {
         static void Postfix()
         {

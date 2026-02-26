@@ -122,7 +122,30 @@ public partial class HUDReplacer : MonoBehaviour
         Debug.Log("HUDReplacer: Initial texture replacement...");
         RefreshAll();
 
+        SceneManager.sceneLoaded += OnSceneLoaded;
+
         StartCoroutine(Watcher());
+    }
+
+    public void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        Debug.Log("HUDReplacer: Scene loaded: " + scene.name);
+        // Reset the tracking set on scene load to ensure textures are re-evaluated.
+        // This is necessary because KSP may reuse texture instances but reset their content.
+        replacedTextureIds.Clear();
+
+        // Immediate refresh for the new scene
+        ReplaceLazyLoadedTextures();
+        ForceGlobalSkin();
+        LoadHUDColors();
     }
 
     public void RefreshAll()
@@ -146,7 +169,6 @@ public partial class HUDReplacer : MonoBehaviour
                 {
                     ReplaceLazyLoadedTextures();
                     ForceGlobalSkin();
-                    Debug.Log("HUDReplacer: Watcher Executed.");
                 }
             }
             catch (Exception e)
@@ -158,40 +180,18 @@ public partial class HUDReplacer : MonoBehaviour
 
     private void ForceGlobalSkin()
     {
-        if (HighLogic.UISkin != null)
+        if (HighLogic.UISkin != null && HighLogic.UISkin.guiSkin != null)
         {
-            ApplySkinFromDef(HighLogic.UISkin);
+            ApplySkin(HighLogic.UISkin.guiSkin);
         }
 
-        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin != HighLogic.UISkin)
+        // UISkinManager is used for modern UI skins in KSP 1.12
+        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin.guiSkin != null)
         {
-            ApplySkinFromDef(UISkinManager.defaultSkin);
-        }
-    }
-
-    private void ApplySkinFromDef(UISkinDef def)
-    {
-        List<UIStyle> styles = new List<UIStyle>
-        {
-            def.window, def.box, def.button, def.toggle, def.label,
-            def.textArea, def.textField, def.scrollView,
-            def.horizontalScrollbar, def.verticalScrollbar,
-            def.horizontalSlider, def.verticalSlider
-        };
-
-        if (def.customStyles != null)
-        {
-            styles.AddRange(def.customStyles);
-        }
-
-        foreach (var style in styles)
-        {
-            if (style != null)
-            {
-                ReplaceTexturesInStyle(style);
-            }
+            ApplySkin(UISkinManager.defaultSkin.guiSkin);
         }
     }
+
     private void ApplySkin(GUISkin skin)
     {
         if (skin == null)
@@ -229,31 +229,6 @@ public partial class HUDReplacer : MonoBehaviour
         }
     }
 
-    private void ReplaceTexturesInStyle(UIStyle style)
-    {
-        if (style == null) return;
-
-        var texturesToReplace = new HashSet<Texture2D>();
-
-        AddTextureFromUIStyleState(style.normal, texturesToReplace);
-        AddTextureFromUIStyleState(style.highlight, texturesToReplace);
-        AddTextureFromUIStyleState(style.active, texturesToReplace);
-        AddTextureFromUIStyleState(style.disabled, texturesToReplace);
-
-        if (texturesToReplace.Count > 0)
-        {
-            ReplaceTextures(texturesToReplace.ToArray());
-        }
-    }
-
-    private void AddTextureFromUIStyleState(UIStyleState state, HashSet<Texture2D> textures)
-    {
-        if (state?.background?.texture != null)
-        {
-            textures.Add(state.background.texture);
-        }
-    }
-
     private void AddTexturesFromStyle(GUIStyle style, List<Texture2D> textures)
     {
         if (style == null)
@@ -283,14 +258,20 @@ public partial class HUDReplacer : MonoBehaviour
 
         foreach (Canvas canvas in canvases)
         {
+            if (canvas == null) continue;
+
             Image[] images = canvas.GetComponentsInChildren<Image>(true);
             foreach (Image img in images)
             {
+                if (img == null) continue;
+
+                Texture2D tex = null;
                 if (img.sprite != null && img.sprite.texture != null)
-                {
-                    texturesToReplace.Add(img.sprite.texture);
-                }
-                else if (img.mainTexture is Texture2D tex)
+                    tex = img.sprite.texture;
+                else if (img.mainTexture is Texture2D mTex)
+                    tex = mTex;
+
+                if (tex != null && !replacedTextureIds.Contains(tex.GetInstanceID()))
                 {
                     texturesToReplace.Add(tex);
                 }
@@ -299,7 +280,9 @@ public partial class HUDReplacer : MonoBehaviour
             RawImage[] rawImages = canvas.GetComponentsInChildren<RawImage>(true);
             foreach (RawImage rawImg in rawImages)
             {
-                if (rawImg.texture is Texture2D tex)
+                if (rawImg == null) continue;
+
+                if (rawImg.texture is Texture2D tex && !replacedTextureIds.Contains(tex.GetInstanceID()))
                 {
                     texturesToReplace.Add(tex);
                 }
@@ -1364,6 +1347,7 @@ public partial class HUDReplacer : MonoBehaviour
                 cursors[2]
             );
             CursorController.Instance.ChangeCursor("HUDReplacerCursor");
+            Debug.Log("HUDReplacer: Changed Cursor!");
         }
     }
 
