@@ -117,13 +117,13 @@ public partial class HUDReplacer : MonoBehaviour
 
         Debug.Log("HUDReplacer: Initializing persistent instance.");
 
-        if (Images is null)
+        if (Images == null || Images.Count == 0)
             LoadTextures();
 
         Debug.Log("HUDReplacer: Initial texture replacement...");
         RefreshAll();
 
-        SceneManager.sceneLoaded += OnSceneLoaded;
+        GameEvents.onLevelWasLoadedGUIReady.Add(OnLevelGUIReady);
 
         StartCoroutine(Watcher());
     }
@@ -132,23 +132,31 @@ public partial class HUDReplacer : MonoBehaviour
     {
         if (Instance == this)
         {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
+            GameEvents.onLevelWasLoadedGUIReady.Remove(OnLevelGUIReady);
         }
     }
 
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    private void OnLevelGUIReady(GameScenes scene)
     {
-        Debug.Log("HUDReplacer: Scene loaded: " + scene.name);
-        // Reset the tracking set on scene load to ensure textures are re-evaluated.
-        // This is necessary because KSP may reuse texture instances but reset their content.
-        replacedTextureIds.Clear();
+        Debug.Log("HUDReplacer: GUI Ready for scene: " + scene);
+        StartCoroutine(DelayedRefresh(3.0f));
+    }
 
-        // Thorough refresh for the new scene, matching the behavior of the manual "Q" trigger.
+    private IEnumerator DelayedRefresh(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        Debug.Log("HUDReplacer: Performing thorough delayed refresh.");
+        // Reset the tracking set on scene stabilization to ensure textures are re-evaluated.
+        // This handles cases where KSP or mods reset skins after the initial load.
+        replacedTextureIds.Clear();
         RefreshAll();
     }
 
     public void RefreshAll()
     {
+        if (Images == null || Images.Count == 0)
+            LoadTextures();
+
         ReplaceTextures();
         LoadHUDColors();
         ForceGlobalSkin();
@@ -156,6 +164,7 @@ public partial class HUDReplacer : MonoBehaviour
 
     private IEnumerator Watcher()
     {
+        int thoroughCount = 0;
         while (true)
         {
             yield return new WaitForSeconds(2.0f);
@@ -168,6 +177,13 @@ public partial class HUDReplacer : MonoBehaviour
                 {
                     ReplaceLazyLoadedTextures();
                     ForceGlobalSkin();
+
+                    thoroughCount++;
+                    if (thoroughCount >= 5) // Every 10 seconds, do a thorough check for new textures
+                    {
+                        ReplaceTextures();
+                        thoroughCount = 0;
+                    }
                 }
             }
             catch (Exception e)
@@ -592,7 +608,7 @@ public partial class HUDReplacer : MonoBehaviour
 
     internal void ReplaceTextures(Texture2D[] tex_array)
     {
-        if (Images.Count == 0 && SceneImages.Count == 0)
+        if ((Images == null || Images.Count == 0) && (SceneImages == null || SceneImages.Count == 0))
             return;
 
         // Get the overloads specific to the current scene but if there are
@@ -606,8 +622,13 @@ public partial class HUDReplacer : MonoBehaviour
             if (tex == null)
                 continue;
 
-            if (replacedTextureIds.Contains(tex.GetInstanceID()))
+            int id = tex.GetInstanceID();
+            if (replacedTextureIds.Contains(id))
                 continue;
+
+            // Mark as evaluated to avoid stuttering on subsequent scans.
+            // Even if no replacement is found, we don't want to re-check this same texture instance every 2 seconds.
+            replacedTextureIds.Add(id);
 
             string name = tex.name;
             if (name.Contains("/"))
@@ -639,7 +660,6 @@ public partial class HUDReplacer : MonoBehaviour
                     cursors = new TextureCursor[3];
 
                 cursors[cidx] = CreateCursor(replacement.path);
-                replacedTextureIds.Add(tex.GetInstanceID());
                 continue;
             }
 
@@ -647,12 +667,10 @@ public partial class HUDReplacer : MonoBehaviour
             if (name == "GaugeGee")
             {
                 HarmonyPatches.GaugeGeeFilePath = replacement.path;
-                replacedTextureIds.Add(tex.GetInstanceID());
             }
             else if (name == "GaugeThrottle")
             {
                 HarmonyPatches.GaugeThrottleFilePath = replacement.path;
-                replacedTextureIds.Add(tex.GetInstanceID());
             }
             else
             {
@@ -660,7 +678,6 @@ public partial class HUDReplacer : MonoBehaviour
                     replacement.cachedTextureBytes = File.ReadAllBytes(replacement.path);
 
                 tex.LoadImage(replacement.cachedTextureBytes);
-                replacedTextureIds.Add(tex.GetInstanceID());
             }
         }
 
