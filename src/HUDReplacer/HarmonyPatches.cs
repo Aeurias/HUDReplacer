@@ -836,7 +836,7 @@ public class HarmonyPatches : MonoBehaviour
     internal static Color EditorCategoryButtonColor_Variants_color;
     internal static Color EditorCategoryButtonColor_Custom_color;
 
-    [HarmonyPatch(typeof(UIMasterController), "Awake")]
+    [HarmonyPatch(typeof(KSP.UI.UIMasterController), "Awake")]
     class Patch_UIMasterController_Awake
     {
         static void Postfix()
@@ -848,8 +848,8 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
-    [HarmonyPatch(typeof(ApplicationLauncher), "Start")]
-    class Patch_ApplicationLauncher_Start
+    [HarmonyPatch(typeof(KSP.UI.Screens.ApplicationLauncher), "Awake")]
+    class Patch_ApplicationLauncher_Awake
     {
         static void Postfix()
         {

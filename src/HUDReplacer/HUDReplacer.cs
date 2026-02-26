@@ -142,10 +142,8 @@ public partial class HUDReplacer : MonoBehaviour
         // This is necessary because KSP may reuse texture instances but reset their content.
         replacedTextureIds.Clear();
 
-        // Immediate refresh for the new scene
-        ReplaceLazyLoadedTextures();
-        ForceGlobalSkin();
-        LoadHUDColors();
+        // Thorough refresh for the new scene, matching the behavior of the manual "Q" trigger.
+        RefreshAll();
     }
 
     public void RefreshAll()
