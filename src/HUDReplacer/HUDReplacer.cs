@@ -139,6 +139,10 @@ public partial class HUDReplacer : MonoBehaviour
     private void OnLevelGUIReady(GameScenes scene)
     {
         Debug.Log("HUDReplacer: GUI Ready for scene: " + scene);
+        // Immediate refresh to avoid default UI being visible during the transition.
+        replacedTextureIds.Clear();
+        RefreshAll();
+
         StartCoroutine(DelayedRefresh(3.0f));
     }
 
