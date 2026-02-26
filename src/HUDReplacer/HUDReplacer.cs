@@ -146,6 +146,7 @@ public partial class HUDReplacer : MonoBehaviour
                 {
                     ReplaceLazyLoadedTextures();
                     ForceGlobalSkin();
+                    Debug.Log("HUDReplacer: Watcher Executed.");
                 }
             }
             catch (Exception e)
@@ -157,18 +158,40 @@ public partial class HUDReplacer : MonoBehaviour
 
     private void ForceGlobalSkin()
     {
-        if (HighLogic.UISkin != null && HighLogic.UISkin.guiSkin != null)
+        if (HighLogic.UISkin != null)
         {
-            ApplySkin(HighLogic.UISkin.guiSkin);
+            ApplySkinFromDef(HighLogic.UISkin);
         }
 
-        // UISkinManager is used for modern UI skins in KSP 1.12
-        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin.guiSkin != null)
+        if (UISkinManager.defaultSkin != null && UISkinManager.defaultSkin != HighLogic.UISkin)
         {
-            ApplySkin(UISkinManager.defaultSkin.guiSkin);
+            ApplySkinFromDef(UISkinManager.defaultSkin);
         }
     }
 
+    private void ApplySkinFromDef(UISkinDef def)
+    {
+        List<UIStyle> styles = new List<UIStyle>
+        {
+            def.window, def.box, def.button, def.toggle, def.label,
+            def.textArea, def.textField, def.scrollView,
+            def.horizontalScrollbar, def.verticalScrollbar,
+            def.horizontalSlider, def.verticalSlider
+        };
+
+        if (def.customStyles != null)
+        {
+            styles.AddRange(def.customStyles);
+        }
+
+        foreach (var style in styles)
+        {
+            if (style != null)
+            {
+                ReplaceTexturesInStyle(style);
+            }
+        }
+    }
     private void ApplySkin(GUISkin skin)
     {
         if (skin == null)
@@ -203,6 +226,31 @@ public partial class HUDReplacer : MonoBehaviour
         if (textures.Count > 0)
         {
             ReplaceTextures(textures.Distinct().ToArray());
+        }
+    }
+
+    private void ReplaceTexturesInStyle(UIStyle style)
+    {
+        if (style == null) return;
+
+        var texturesToReplace = new HashSet<Texture2D>();
+
+        AddTextureFromUIStyleState(style.normal, texturesToReplace);
+        AddTextureFromUIStyleState(style.highlight, texturesToReplace);
+        AddTextureFromUIStyleState(style.active, texturesToReplace);
+        AddTextureFromUIStyleState(style.disabled, texturesToReplace);
+
+        if (texturesToReplace.Count > 0)
+        {
+            ReplaceTextures(texturesToReplace.ToArray());
+        }
+    }
+
+    private void AddTextureFromUIStyleState(UIStyleState state, HashSet<Texture2D> textures)
+    {
+        if (state?.background?.texture != null)
+        {
+            textures.Add(state.background.texture);
         }
     }
 
@@ -1316,7 +1364,6 @@ public partial class HUDReplacer : MonoBehaviour
                 cursors[2]
             );
             CursorController.Instance.ChangeCursor("HUDReplacerCursor");
-            Debug.Log("HUDReplacer: Changed Cursor!");
         }
     }
 
