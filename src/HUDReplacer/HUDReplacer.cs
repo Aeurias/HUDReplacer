@@ -108,7 +108,6 @@ public partial class HUDReplacer : MonoBehaviour
     private Dictionary<int, SizedReplacementInfo> idReplacementMap =
         new Dictionary<int, SizedReplacementInfo>();
     private bool isCursorUpdatePending = false;
-    private bool hasDoneFirstRunMainMenuRefresh = false;
 
     public void Awake()
     {
@@ -148,23 +147,15 @@ public partial class HUDReplacer : MonoBehaviour
         RefreshAll();
     }
 
-    public void RunFirstRunMainMenuRefresh()
+    public void RunMainMenuRefreshSequence()
     {
-        if (hasDoneFirstRunMainMenuRefresh)
-            return;
-
-        hasDoneFirstRunMainMenuRefresh = true;
-
-        // Sequence of refreshes to counter KSP's internal UI resets during first-run Main Menu load.
-        // We avoid an immediate refresh because it's often too early.
-        // Multiple refreshes ensure we catch all late-loading UI elements (like Application Launcher buttons).
-        float[] delays = { 0.5f, 1.2f, 2.0f, 5.0f };
+        float[] delays = { 0.5f, 1.2f, 2.0f };
         foreach (float delay in delays)
         {
             this.Invoke(
                 () =>
                 {
-                    Debug.Log($"HUDReplacer: Performing first-run Main Menu refresh ({delay}s).");
+                    Debug.Log($"HUDReplacer: Performing Main Menu refresh ({delay}s).");
                     replacedTextureIds.Clear();
                     idReplacementMap.Clear();
                     RefreshAll();
@@ -192,7 +183,7 @@ public partial class HUDReplacer : MonoBehaviour
             ApplySkin(HighLogic.Skin);
         }
 
-        // Modern uGUI Support (KSP 1.12)
+        // Modern uGUI Support
         if (HighLogic.UISkin != null)
         {
             ApplyUISkinDef(HighLogic.UISkin);

@@ -904,20 +904,6 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
-    [HarmonyPatch(typeof(GUI), nameof(GUI.Window), new Type[] { typeof(int), typeof(Rect), typeof(GUI.WindowFunction), typeof(string) })]
-    class Patch_GUI_Window
-    {
-        static void Prefix()
-        {
-            // Just a trigger to ensure textures are replaced if something uses legacy GUI
-            if (HUDReplacer.Instance != null)
-            {
-                // We don't want to call RefreshAll every frame for every window.
-                // But Phase B says "check if it matches a skinning rule and apply it immediately".
-                // For now, we rely on the Watcher and SceneLoaded patches.
-            }
-        }
-    }
 
     [HarmonyPatch(typeof(MainMenu), "Start")]
     class Patch_MainMenu_Start
@@ -926,7 +912,7 @@ public class HarmonyPatches : MonoBehaviour
         {
             if (HUDReplacer.Instance != null)
             {
-                HUDReplacer.Instance.RunFirstRunMainMenuRefresh();
+                HUDReplacer.Instance.RunMainMenuRefreshSequence();
             }
         }
     }
