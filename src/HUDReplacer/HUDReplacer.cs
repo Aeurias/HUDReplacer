@@ -154,23 +154,24 @@ public partial class HUDReplacer : MonoBehaviour
             return;
 
         hasDoneFirstRunMainMenuRefresh = true;
-        Debug.Log("HUDReplacer: Performing first-run Main Menu refresh.");
 
-        replacedTextureIds.Clear();
-        idReplacementMap.Clear();
-        RefreshAll();
-
-        // Fallback delay
-        this.Invoke(
-            () =>
-            {
-                Debug.Log("HUDReplacer: Performing first-run Main Menu fallback refresh.");
-                replacedTextureIds.Clear();
-                idReplacementMap.Clear();
-                RefreshAll();
-            },
-            2f
-        );
+        // Sequence of refreshes to counter KSP's internal UI resets during first-run Main Menu load.
+        // We avoid an immediate refresh because it's often too early.
+        // Multiple refreshes ensure we catch all late-loading UI elements (like Application Launcher buttons).
+        float[] delays = { 0.5f, 1.2f, 2.0f, 5.0f };
+        foreach (float delay in delays)
+        {
+            this.Invoke(
+                () =>
+                {
+                    Debug.Log($"HUDReplacer: Performing first-run Main Menu refresh ({delay}s).");
+                    replacedTextureIds.Clear();
+                    idReplacementMap.Clear();
+                    RefreshAll();
+                },
+                delay
+            );
+        }
     }
 
     public void RefreshAll()
