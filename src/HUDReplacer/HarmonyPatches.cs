@@ -77,17 +77,6 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
-    [HarmonyPatch(typeof(UISkinManager), nameof(UISkinManager.SetSkin), new Type[] { typeof(UISkinDef) })]
-    class Patch_UISkinManager_SetSkin
-    {
-        static void Postfix(UISkinDef skin)
-        {
-            if (HUDReplacer.Instance != null && skin != null)
-            {
-                HUDReplacer.Instance.ApplyUISkinDef(skin);
-            }
-        }
-    }
 
     [HarmonyPatch(typeof(StageTumbler), "Awake")]
     class Patch1_2

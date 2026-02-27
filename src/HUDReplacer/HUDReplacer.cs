@@ -176,7 +176,7 @@ public partial class HUDReplacer : MonoBehaviour
         }
     }
 
-    internal void ApplyUISkinDef(object uiSkinDef)
+    public void ApplyUISkinDef(object uiSkinDef)
     {
         if (uiSkinDef == null)
             return;
