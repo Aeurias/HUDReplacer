@@ -107,6 +107,7 @@ public partial class HUDReplacer : MonoBehaviour
     private HashSet<int> replacedTextureIds = new HashSet<int>();
     private Dictionary<int, SizedReplacementInfo> idReplacementMap =
         new Dictionary<int, SizedReplacementInfo>();
+    private bool isCursorUpdatePending = false;
 
     public void Awake()
     {
@@ -540,6 +541,7 @@ public partial class HUDReplacer : MonoBehaviour
         if (!SceneImages.TryGetValue(HighLogic.LoadedScene, out var sceneImages))
             sceneImages = Empty;
 
+        bool cursorReplaced = false;
         var basePath = KSPUtil.ApplicationRootPath;
         foreach (Texture2D tex in tex_array)
         {
@@ -552,7 +554,7 @@ public partial class HUDReplacer : MonoBehaviour
 
             if (idReplacementMap.TryGetValue(id, out var replacement))
             {
-                ApplyReplacement(tex, replacement, basePath);
+                cursorReplaced |= ApplyReplacement(tex, replacement, basePath);
                 replacedTextureIds.Add(id);
                 continue;
             }
@@ -579,14 +581,18 @@ public partial class HUDReplacer : MonoBehaviour
                 continue;
 
             idReplacementMap[id] = replacement;
-            ApplyReplacement(tex, replacement, basePath);
+            cursorReplaced |= ApplyReplacement(tex, replacement, basePath);
         }
 
         // Need to wait a small amount of time after scene load before you can set the cursor.
-        this.Invoke(SetCursor, 1f);
+        if (cursorReplaced && !isCursorUpdatePending)
+        {
+            isCursorUpdatePending = true;
+            this.Invoke(SetCursor, 1f);
+        }
     }
 
-    private void ApplyReplacement(Texture2D tex, SizedReplacementInfo replacement, string basePath)
+    private bool ApplyReplacement(Texture2D tex, SizedReplacementInfo replacement, string basePath)
     {
         string name = replacement.basename;
 
@@ -607,7 +613,7 @@ public partial class HUDReplacer : MonoBehaviour
                 cursors = new TextureCursor[3];
 
             cursors[cidx] = CreateCursor(replacement.path);
-            return;
+            return true;
         }
 
         // NavBall GaugeGee and GaugeThrottle needs special handling as well
@@ -626,6 +632,8 @@ public partial class HUDReplacer : MonoBehaviour
 
             tex.LoadImage(replacement.cachedTextureBytes);
         }
+
+        return false;
     }
 
     private static SizedReplacementInfo GetMatchingReplacement(
@@ -1349,6 +1357,7 @@ public partial class HUDReplacer : MonoBehaviour
     */
     private void SetCursor()
     {
+        isCursorUpdatePending = false;
         if (cursors != null && cursors[0] != null)
         {
             if (cursors[1] == null)
@@ -1362,7 +1371,11 @@ public partial class HUDReplacer : MonoBehaviour
                 cursors[2]
             );
             CursorController.Instance.ChangeCursor("HUDReplacerCursor");
-            Debug.Log("HUDReplacer: Changed Cursor!");
+
+            if (enableDebug)
+            {
+                Debug.Log("HUDReplacer: Changed Cursor!");
+            }
         }
     }
 
