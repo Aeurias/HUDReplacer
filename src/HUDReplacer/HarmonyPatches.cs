@@ -46,6 +46,18 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
+    [HarmonyPatch(typeof(UISkinManager), nameof(UISkinManager.GetSkin), new Type[] { typeof(string) })]
+    class Patch_UISkinManager_GetSkin
+    {
+        static void Postfix(UISkinDef __result)
+        {
+            if (HUDReplacer.Instance != null && __result != null)
+            {
+                HUDReplacer.Instance.ApplyUISkinDef(__result);
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(Graphic), "OnEnable")]
     class Patch_Graphic_OnEnable
     {
