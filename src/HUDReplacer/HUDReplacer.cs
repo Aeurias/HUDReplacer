@@ -82,6 +82,7 @@ public partial class HUDReplacer : MonoBehaviour
         public int height;
         public string path;
         public byte[] cachedTextureBytes;
+        public string basename;
     }
 
     public static HUDReplacer Instance { get; private set; }
@@ -104,6 +105,8 @@ public partial class HUDReplacer : MonoBehaviour
     private static string colorPathConfig = "HUDReplacerRecolor";
     private TextureCursor[] cursors;
     private HashSet<int> replacedTextureIds = new HashSet<int>();
+    private Dictionary<int, SizedReplacementInfo> idReplacementMap =
+        new Dictionary<int, SizedReplacementInfo>();
 
     public void Awake()
     {
@@ -124,8 +127,6 @@ public partial class HUDReplacer : MonoBehaviour
         RefreshAll();
 
         GameEvents.onLevelWasLoadedGUIReady.Add(OnLevelGUIReady);
-
-        StartCoroutine(Watcher());
     }
 
     public void OnDestroy()
@@ -141,18 +142,7 @@ public partial class HUDReplacer : MonoBehaviour
         Debug.Log("HUDReplacer: GUI Ready for scene: " + scene);
         // Immediate refresh to avoid default UI being visible during the transition.
         replacedTextureIds.Clear();
-        RefreshAll();
-
-        StartCoroutine(DelayedRefresh(3.0f));
-    }
-
-    private IEnumerator DelayedRefresh(float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        Debug.Log("HUDReplacer: Performing thorough delayed refresh.");
-        // Reset the tracking set on scene stabilization to ensure textures are re-evaluated.
-        // This handles cases where KSP or mods reset skins after the initial load.
-        replacedTextureIds.Clear();
+        idReplacementMap.Clear(); // Clear cache on scene switch as scene-specific replacements might change
         RefreshAll();
     }
 
@@ -164,37 +154,6 @@ public partial class HUDReplacer : MonoBehaviour
         ReplaceTextures();
         LoadHUDColors();
         ForceGlobalSkin();
-    }
-
-    private IEnumerator Watcher()
-    {
-        int thoroughCount = 0;
-        while (true)
-        {
-            yield return new WaitForSeconds(2.0f);
-            try
-            {
-                if (
-                    HighLogic.LoadedScene != GameScenes.LOADING
-                    && HighLogic.LoadedScene != GameScenes.LOADINGBUFFER
-                )
-                {
-                    ReplaceLazyLoadedTextures();
-                    ForceGlobalSkin();
-
-                    thoroughCount++;
-                    if (thoroughCount >= 5) // Every 10 seconds, do a thorough check for new textures
-                    {
-                        ReplaceTextures();
-                        thoroughCount = 0;
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.Log("HUDReplacer: Watcher error: " + e.Message);
-            }
-        }
     }
 
     private void ForceGlobalSkin()
@@ -217,7 +176,7 @@ public partial class HUDReplacer : MonoBehaviour
         }
     }
 
-    private void ApplyUISkinDef(object uiSkinDef)
+    internal void ApplyUISkinDef(object uiSkinDef)
     {
         if (uiSkinDef == null)
             return;
@@ -326,49 +285,6 @@ public partial class HUDReplacer : MonoBehaviour
             textures.Add(style.onFocused.background);
     }
 
-    private void ReplaceLazyLoadedTextures()
-    {
-        Canvas[] canvases = GameObject.FindObjectsOfType<Canvas>();
-        HashSet<Texture2D> texturesToReplace = new HashSet<Texture2D>();
-
-        foreach (Canvas canvas in canvases)
-        {
-            if (canvas == null) continue;
-
-            Image[] images = canvas.GetComponentsInChildren<Image>(true);
-            foreach (Image img in images)
-            {
-                if (img == null) continue;
-
-                Texture2D tex = null;
-                if (img.sprite != null && img.sprite.texture != null)
-                    tex = img.sprite.texture;
-                else if (img.mainTexture is Texture2D mTex)
-                    tex = mTex;
-
-                if (tex != null && !replacedTextureIds.Contains(tex.GetInstanceID()))
-                {
-                    texturesToReplace.Add(tex);
-                }
-            }
-
-            RawImage[] rawImages = canvas.GetComponentsInChildren<RawImage>(true);
-            foreach (RawImage rawImg in rawImages)
-            {
-                if (rawImg == null) continue;
-
-                if (rawImg.texture is Texture2D tex && !replacedTextureIds.Contains(tex.GetInstanceID()))
-                {
-                    texturesToReplace.Add(tex);
-                }
-            }
-        }
-
-        if (texturesToReplace.Count > 0)
-        {
-            ReplaceTextures(texturesToReplace.ToArray());
-        }
-    }
 
     public void Update()
     {
@@ -388,9 +304,11 @@ public partial class HUDReplacer : MonoBehaviour
             if (Input.GetKeyUp(KeyCode.Q))
             {
                 replacedTextureIds.Clear();
+                idReplacementMap.Clear();
                 LoadTextures();
                 ReplaceTextures();
                 LoadHUDColors();
+                ForceGlobalSkin();
                 Debug.Log("HUDReplacer: Refreshed.");
             }
             if (Input.GetKeyUp(KeyCode.D))
@@ -575,6 +493,8 @@ public partial class HUDReplacer : MonoBehaviour
                     width = width,
                     height = height,
                     path = filename,
+                    cachedTextureBytes = File.ReadAllBytes(filename),
+                    basename = basename
                 };
 
                 if (!replacements.TryGetValue(basename, out var replacement))
@@ -630,63 +550,82 @@ public partial class HUDReplacer : MonoBehaviour
             if (replacedTextureIds.Contains(id))
                 continue;
 
-            // Mark as evaluated to avoid stuttering on subsequent scans.
-            // Even if no replacement is found, we don't want to re-check this same texture instance every 2 seconds.
-            replacedTextureIds.Add(id);
+            if (idReplacementMap.TryGetValue(id, out var replacement))
+            {
+                ApplyReplacement(tex, replacement, basePath);
+                replacedTextureIds.Add(id);
+                continue;
+            }
 
             string name = tex.name;
-            if (name.Contains("/"))
-                name = name.Split('/').Last();
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            // Mark as evaluated to avoid stuttering on subsequent scans.
+            // Even if no replacement is found, we don't want to re-check this same texture instance.
+            replacedTextureIds.Add(id);
+
+            int slashIndex = name.LastIndexOf('/');
+            if (slashIndex != -1)
+                name = name.Substring(slashIndex + 1);
 
             if (!Images.TryGetValue(name, out var info))
                 info = null;
             if (!sceneImages.TryGetValue(name, out var sceneInfo))
                 sceneInfo = null;
 
-            var replacement = GetMatchingReplacement(info, sceneInfo, tex);
+            replacement = GetMatchingReplacement(info, sceneInfo, tex);
             if (replacement is null)
                 continue;
 
-            if (SettingsManager.Instance.showDebugToolbar)
-            {
-                var path = replacement.path;
-                if (path.StartsWith(basePath))
-                    path = path.Substring(basePath.Length);
-
-                Debug.Log($"HUDReplacer: Replacing texture {name} with {path}");
-            }
-
-            // Special handling for the mouse cursor
-            int cidx = CursorNames.IndexOf(name);
-            if (cidx != -1)
-            {
-                if (cursors is null)
-                    cursors = new TextureCursor[3];
-
-                cursors[cidx] = CreateCursor(replacement.path);
-                continue;
-            }
-
-            // NavBall GaugeGee and GaugeThrottle needs special handling as well
-            if (name == "GaugeGee")
-            {
-                HarmonyPatches.GaugeGeeFilePath = replacement.path;
-            }
-            else if (name == "GaugeThrottle")
-            {
-                HarmonyPatches.GaugeThrottleFilePath = replacement.path;
-            }
-            else
-            {
-                if (replacement.cachedTextureBytes is null)
-                    replacement.cachedTextureBytes = File.ReadAllBytes(replacement.path);
-
-                tex.LoadImage(replacement.cachedTextureBytes);
-            }
+            idReplacementMap[id] = replacement;
+            ApplyReplacement(tex, replacement, basePath);
         }
 
         // Need to wait a small amount of time after scene load before you can set the cursor.
         this.Invoke(SetCursor, 1f);
+    }
+
+    private void ApplyReplacement(Texture2D tex, SizedReplacementInfo replacement, string basePath)
+    {
+        string name = replacement.basename;
+
+        if (SettingsManager.Instance.showDebugToolbar)
+        {
+            var path = replacement.path;
+            if (path.StartsWith(basePath))
+                path = path.Substring(basePath.Length);
+
+            Debug.Log($"HUDReplacer: Replacing texture {name} with {path}");
+        }
+
+        // Special handling for the mouse cursor
+        int cidx = CursorNames.IndexOf(name);
+        if (cidx != -1)
+        {
+            if (cursors is null)
+                cursors = new TextureCursor[3];
+
+            cursors[cidx] = CreateCursor(replacement.path);
+            return;
+        }
+
+        // NavBall GaugeGee and GaugeThrottle needs special handling as well
+        if (name == "GaugeGee")
+        {
+            HarmonyPatches.GaugeGeeFilePath = replacement.path;
+        }
+        else if (name == "GaugeThrottle")
+        {
+            HarmonyPatches.GaugeThrottleFilePath = replacement.path;
+        }
+        else
+        {
+            if (replacement.cachedTextureBytes is null)
+                replacement.cachedTextureBytes = File.ReadAllBytes(replacement.path);
+
+            tex.LoadImage(replacement.cachedTextureBytes);
+        }
     }
 
     private static SizedReplacementInfo GetMatchingReplacement(

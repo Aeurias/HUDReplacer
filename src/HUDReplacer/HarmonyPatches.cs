@@ -46,6 +46,49 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
+    [HarmonyPatch(typeof(Graphic), "OnEnable")]
+    class Patch_Graphic_OnEnable
+    {
+        static void Postfix(Graphic __instance)
+        {
+            if (HUDReplacer.Instance == null)
+                return;
+
+            if (__instance is Image img)
+            {
+                Texture2D tex = null;
+                if (img.sprite != null && img.sprite.texture != null)
+                    tex = img.sprite.texture;
+                else if (img.mainTexture is Texture2D mTex)
+                    tex = mTex;
+
+                if (tex != null)
+                {
+                    HUDReplacer.Instance.ReplaceTextures(new Texture2D[] { tex });
+                }
+            }
+            else if (__instance is RawImage rawImg)
+            {
+                if (rawImg.texture is Texture2D tex)
+                {
+                    HUDReplacer.Instance.ReplaceTextures(new Texture2D[] { tex });
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(UISkinManager), nameof(UISkinManager.SetSkin), new Type[] { typeof(UISkinDef) })]
+    class Patch_UISkinManager_SetSkin
+    {
+        static void Postfix(UISkinDef skin)
+        {
+            if (HUDReplacer.Instance != null && skin != null)
+            {
+                HUDReplacer.Instance.ApplyUISkinDef(skin);
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(StageTumbler), "Awake")]
     class Patch1_2
     {
