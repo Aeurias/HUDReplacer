@@ -108,6 +108,7 @@ public partial class HUDReplacer : MonoBehaviour
     private Dictionary<int, SizedReplacementInfo> idReplacementMap =
         new Dictionary<int, SizedReplacementInfo>();
     private bool isCursorUpdatePending = false;
+    private bool hasDoneFirstRunMainMenuRefresh = false;
 
     public void Awake()
     {
@@ -145,6 +146,31 @@ public partial class HUDReplacer : MonoBehaviour
         replacedTextureIds.Clear();
         idReplacementMap.Clear(); // Clear cache on scene switch as scene-specific replacements might change
         RefreshAll();
+    }
+
+    public void RunFirstRunMainMenuRefresh()
+    {
+        if (hasDoneFirstRunMainMenuRefresh)
+            return;
+
+        hasDoneFirstRunMainMenuRefresh = true;
+        Debug.Log("HUDReplacer: Performing first-run Main Menu refresh.");
+
+        replacedTextureIds.Clear();
+        idReplacementMap.Clear();
+        RefreshAll();
+
+        // Fallback delay
+        this.Invoke(
+            () =>
+            {
+                Debug.Log("HUDReplacer: Performing first-run Main Menu fallback refresh.");
+                replacedTextureIds.Clear();
+                idReplacementMap.Clear();
+                RefreshAll();
+            },
+            2f
+        );
     }
 
     public void RefreshAll()

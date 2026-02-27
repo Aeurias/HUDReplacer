@@ -919,6 +919,18 @@ public class HarmonyPatches : MonoBehaviour
         }
     }
 
+    [HarmonyPatch(typeof(MainMenu), "Start")]
+    class Patch_MainMenu_Start
+    {
+        static void Postfix()
+        {
+            if (HUDReplacer.Instance != null)
+            {
+                HUDReplacer.Instance.RunFirstRunMainMenuRefresh();
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(PartCategorizer), "Setup")]
     class Patch17
     {
