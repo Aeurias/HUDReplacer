@@ -2,38 +2,24 @@
 
 namespace HUDReplacer
 {
-    internal class SettingsManager
+    internal static class SettingsManager
     {
-        static SettingsManager instance;
-        public bool showDebugToolbar;
-        public static SettingsManager Instance
-        {
-            get
-            {
-                if (instance == null)
-                {
-                    instance = new SettingsManager();
-                }
-                return instance;
-            }
-        }
+        public static bool ShowDebugToolbar;
 
-        SettingsManager()
+        internal static void LoadConfig()
         {
-            ConfigNode node = GameDatabase.Instance.GetConfigNode(
-                "HUDReplacer/HUDReplacerSettings"
+            var node = GameDatabase.Instance.GetConfigNode(
+                "HUDReplacer/Settings/HUDReplacerSettings"
             );
             if (node == null)
             {
                 Debug.LogError(
-                    "HUDReplacer: Could not load settings. Settings.cfg may be missing."
+                    "[HUDReplacer] Could not load settings. Settings.cfg may be missing."
                 );
                 return;
             }
-            if (node.HasValue("showDebugToolbar"))
-            {
-                bool.TryParse(node.GetValue("showDebugToolbar"), out showDebugToolbar);
-            }
+
+            node.TryGetValue("showDebugToolbar", ref ShowDebugToolbar);
         }
     }
 }

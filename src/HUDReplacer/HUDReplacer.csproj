@@ -24,6 +24,11 @@
     <ItemGroup>
         <PackageReference Include="KSPBuildTools" Version="0.0.4" />
 
+        <PackageReference Include="Krafs.Publicizer" Version="2.3.0">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+
         <Reference Include="HarmonyKSP">
             <HintPath>$(KSPRoot)\GameData\000_Harmony\0Harmony.dll</HintPath>
             <Private>false</Private>
@@ -35,6 +40,16 @@
     <PropertyGroup>
         <GameDataOutDir>$(RepoRootPath)\GameData\HUDReplacer</GameDataOutDir>
     </PropertyGroup>
+
+    <ItemGroup>
+        <Publicize Include="UnityEngine.UI:UnityEngine.UI.Image.OnEnable" />
+        <Publicize Include="UnityEngine.UI:UnityEngine.UI.MaskableGraphic.OnEnable" />
+        <Publicize Include="Assembly-CSharp:UIPartActionController.CreatePartUI" />
+        <Publicize Include="Assembly-CSharp:UIPartActionButton.Awake" />
+        <Publicize Include="Assembly-CSharp:UIPartActionResourcePriority.Awake" />
+        <Publicize Include="Assembly-CSharp:KSP.UI.UIButtonToggle.Awake" />
+        <Publicize Include="Assembly-CSharp:UISkinManager.fetch" />
+    </ItemGroup>
 
     <!--
         It's really easy for old binaries to stick around in GameData and bin
